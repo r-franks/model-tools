@@ -39,7 +39,7 @@ def highlight_region_around_x(ax, x_target, xs, spacing=0.5, highlight_color="or
 ##########################################################################################
 #                             L1/L2 Regularization                                       # 
 ##########################################################################################
-def plot_reg_path_coef(model, highlight_c="orange", figsize=None, fontsize=None, ax=None):
+def plot_reg_path_coef(model, marker='o', highlight_c="orange", figsize=None, fontsize=None, ax=None):
     # create figure if absent
     return_fig = False
     if not ax:
@@ -49,7 +49,7 @@ def plot_reg_path_coef(model, highlight_c="orange", figsize=None, fontsize=None,
         if figsize:
             warnings.warn("ax provided, figsize not updated")
         
-    ax.plot(np.log10(model.Cs_), model.coefs_paths_[1].mean(axis=0), marker='o')
+    ax.plot(np.log10(model.Cs_), model.coefs_paths_[1].mean(axis=0), marker=marker)
     ymin, ymax = ax.set_ylim()
     
     if highlight_c:
@@ -64,7 +64,7 @@ def plot_reg_path_coef(model, highlight_c="orange", figsize=None, fontsize=None,
     else:
         return ax
 
-def plot_reg_path_perf(model, highlight_c="orange", figsize=None, fontsize=None, ax=None):
+def plot_reg_path_perf(model, marker='o', highlight_c="orange", include_n_coef=False, figsize=None, fontsize=None, ax=None):
     # create figure if absent
     return_fig = False
     if not ax:
@@ -74,9 +74,19 @@ def plot_reg_path_perf(model, highlight_c="orange", figsize=None, fontsize=None,
         if figsize:
             warnings.warn("ax provided, figsize not updated")
         
-    ax.plot(np.log10(model.Cs_), model.scores_[1].mean(axis=0), marker='o')    
+    ax.plot(np.log10(model.Cs_), model.scores_[1].mean(axis=0), label=model.scoring, marker=marker)    
     ymin, ymax = ax.set_ylim()
     
+    if include_n_coef:
+        ax_coef = ax.twinx()
+        ax_coef.set_ylabel("features", fontsize=fontsize)
+        ax_coef.plot(np.log10(model.Cs_), (model.coefs_paths_[1] != 0).any(axis=0).sum(axis=1), marker=marker, label="n coef", color="orange")
+        ax_coef.axis('tight')
+
+        # add legend to distinguish series
+        ax.plot([], [], label="n coef")
+        ax.legend()
+
     if highlight_c:
         highlight_region_around_x(ax, x_target=np.log10(model.C_[0]), xs=np.log10(model.Cs_), spacing=0.5, highlight_color=highlight_c, alpha=0.5)
     
@@ -89,17 +99,17 @@ def plot_reg_path_perf(model, highlight_c="orange", figsize=None, fontsize=None,
     else:
         return ax
 
-def plot_reg_path(model, highlight_c="orange", figsize=None, fontsize=None):
+def plot_reg_path(model, marker='o', highlight_c="orange", include_n_coef=False, figsize=None, fontsize=None):
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=figsize)
     fig.suptitle('Mean Logistic Regression Path Over Crossval Folds', fontsize=fontsize)
-    plot_reg_path_coef(model, highlight_c=highlight_c, fontsize=fontsize, ax=ax1)
-    plot_reg_path_perf(model, highlight_c=highlight_c, fontsize=fontsize, ax=ax2)
+    plot_reg_path_coef(model, marker=marker, highlight_c=highlight_c, fontsize=fontsize, ax=ax1)
+    plot_reg_path_perf(model, marker=marker, highlight_c=highlight_c, include_n_coef=include_n_coef, fontsize=fontsize, ax=ax2)
     return fig, (ax1, ax2)
 
 ##########################################################################################
 #                                   Elastic Net                                          # 
 ##########################################################################################
-def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
+def plot_perf_vs_l1ratio(model, marker='o', highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
     # create figure if absent
     return_fig = False
     if not ax:
@@ -116,7 +126,7 @@ def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figs
     log10Cs = np.log10(model.Cs_)
     colors = zero_one_normalize(log10Cs)
     for col, c, series in zip(colors, log10Cs, model.scores_[1].mean(axis=0)):
-        ax.plot(model.l1_ratios, series, '-o', label="{0:.4f}".format(c), color=cmap(col))
+        ax.plot(model.l1_ratios, series, marker=marker, label="{0:.4f}".format(c), color=cmap(col))
         
     if highlight_c:
         highlight_region_around_x(ax, x_target=model.l1_ratio_[0], xs=model.l1_ratios, spacing=0.5, highlight_color=highlight_c, alpha=0.5)
@@ -130,7 +140,7 @@ def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figs
     else:
         return ax
 
-def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
+def plot_perf_vs_c(model, marker='o', highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
     # create figure if absent
     return_fig = False
     if not ax:
@@ -146,7 +156,7 @@ def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=No
 
     colors = zero_one_normalize(model.l1_ratios)
     for col, l1ratio, series in zip(colors, model.l1_ratios, model.scores_[1].mean(axis=0).T):
-        ax.plot(np.log10(model.Cs_), series, '-o', label="{0:.4f}".format(l1ratio), color=cmap(col))
+        ax.plot(np.log10(model.Cs_), series, marker=marker, label="{0:.4f}".format(l1ratio), color=cmap(col))
         
     if highlight_c:
         highlight_region_around_x(ax, x_target=np.log10(model.C_[0]), xs=np.log10(model.Cs_), spacing=0.5, highlight_color=highlight_c, alpha=0.5)
@@ -160,11 +170,11 @@ def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=No
     else:
         return ax
 
-def plot_elnet_perf(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None):
+def plot_elnet_perf(model, marker='o', highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None):
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=figsize)
     fig.suptitle('Elastic Net Average Crossval Performance', fontsize=fontsize)
-    plot_perf_vs_l1ratio(model, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax1)
-    plot_perf_vs_c(model, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax2)
+    plot_perf_vs_l1ratio(model, marker=marker, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax1)
+    plot_perf_vs_c(model, marker=marker, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax2)
 
     plot_cbar(np.log10(model.Cs_), cmap=cmap, fig=fig, ax=ax1, label="log(C)", fontsize=fontsize)
     plot_cbar(model.l1_ratios, cmap=cmap, fig=fig, ax=ax2, label="l1 ratio", fontsize=fontsize)
