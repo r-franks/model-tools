@@ -2,6 +2,18 @@ import warnings
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import matplotlib.colors as mcolors
+
+def zero_one_normalize(xs):
+    return (xs - xs.min())/(xs.max() - xs.min())
+
+def plot_cbar(xs, cmap, fig, ax, label=None, fontsize=None):
+    normalize = mcolors.Normalize(vmin=xs.min(), vmax=xs.max())
+    scalarmappaple = cm.ScalarMappable(norm=normalize, cmap=cmap)
+    scalarmappaple.set_array(xs)
+    cbar = fig.colorbar(scalarmappaple, ax=ax)
+    cbar.set_label(label, fontsize=fontsize)
+    return cbar
 
 def highlight_region_around_x(ax, x_target, xs, spacing=0.5, highlight_color="orange", alpha=0.5):
     eps = 1e-8
@@ -28,10 +40,11 @@ def highlight_region_around_x(ax, x_target, xs, spacing=0.5, highlight_color="or
 #                             L1/L2 Regularization                                       # 
 ##########################################################################################
 def plot_reg_path_coef(model, highlight_c="orange", figsize=None, fontsize=None, ax=None):
-    
     # create figure if absent
+    return_fig = False
     if not ax:
         fig, ax = plt.subplots(1,1, figsize=figsize)
+        return_fig = True
     else:
         if figsize:
             warnings.warn("ax provided, figsize not updated")
@@ -45,12 +58,18 @@ def plot_reg_path_coef(model, highlight_c="orange", figsize=None, fontsize=None,
     ax.set_xlabel('log(C)', fontsize=fontsize)
     ax.set_ylabel('Mean Coefficient', fontsize=fontsize)
     ax.axis('tight')
-    return ax
+
+    if return_fig:
+        return fig, ax
+    else:
+        return ax
 
 def plot_reg_path_perf(model, highlight_c="orange", figsize=None, fontsize=None, ax=None):
     # create figure if absent
+    return_fig = False
     if not ax:
         fig, ax = plt.subplots(1,1, figsize=figsize)
+        return_fig = True
     else:
         if figsize:
             warnings.warn("ax provided, figsize not updated")
@@ -64,7 +83,11 @@ def plot_reg_path_perf(model, highlight_c="orange", figsize=None, fontsize=None,
     ax.set_xlabel('log(C)', fontsize=fontsize)
     ax.set_ylabel(model.scoring, fontsize=fontsize)
     ax.axis('tight')
-    return ax
+
+    if return_fig:
+        return fig, ax
+    else:
+        return ax
 
 def plot_reg_path(model, highlight_c="orange", figsize=None, fontsize=None):
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=figsize)
@@ -78,8 +101,10 @@ def plot_reg_path(model, highlight_c="orange", figsize=None, fontsize=None):
 ##########################################################################################
 def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
     # create figure if absent
+    return_fig = False
     if not ax:
         fig, ax = plt.subplots(1,1, figsize=figsize)
+        return_fig = True
     else:
         if figsize:
             warnings.warn("ax provided, figsize not updated")
@@ -88,8 +113,9 @@ def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figs
     min_score = (1-t)*min_score + t*max_score
     ax.set_ylim([min_score, max_score])
 
-    colors = np.linspace(0, 1.0, model.Cs)
-    for col, c, series in zip(colors, np.log10(model.Cs_), model.scores_[1].mean(axis=0)):
+    log10Cs = np.log10(model.Cs_)
+    colors = zero_one_normalize(log10Cs)
+    for col, c, series in zip(colors, log10Cs, model.scores_[1].mean(axis=0)):
         ax.plot(model.l1_ratios, series, '-o', label="{0:.4f}".format(c), color=cmap(col))
         
     if highlight_c:
@@ -97,12 +123,19 @@ def plot_perf_vs_l1ratio(model, highlight_c="orange", cmap=cm.viridis, t=0, figs
 
     ax.set_xlabel("l1 ratio", fontsize=fontsize)
     ax.set_ylabel(model.scoring, fontsize=fontsize)
-    return ax
+
+    if return_fig:
+        plot_cbar(log10Cs, cmap=cmap, fig=fig, ax=ax, label="log(C)", fontsize=fontsize)
+        return fig, ax
+    else:
+        return ax
 
 def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None, ax=None):
     # create figure if absent
+    return_fig = False
     if not ax:
         fig, ax = plt.subplots(1,1, figsize=figsize)
+        return_fig = True
     else:
         if figsize:
             warnings.warn("ax provided, figsize not updated")
@@ -111,7 +144,7 @@ def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=No
     min_score = (1-t)*min_score + t*max_score
     ax.set_ylim([min_score, max_score])
 
-    colors = np.linspace(0, 1.0, len(model.l1_ratios))
+    colors = zero_one_normalize(model.l1_ratios)
     for col, l1ratio, series in zip(colors, model.l1_ratios, model.scores_[1].mean(axis=0).T):
         ax.plot(np.log10(model.Cs_), series, '-o', label="{0:.4f}".format(l1ratio), color=cmap(col))
         
@@ -120,11 +153,20 @@ def plot_perf_vs_c(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=No
 
     ax.set_xlabel("log(C)", fontsize=fontsize)
     ax.set_ylabel(model.scoring, fontsize=fontsize)
-    return ax
 
-def plot_elnet_perf(model, highlight_c="orange", t=0.0, figsize=None, fontsize=None):
+    if return_fig:
+        plot_cbar(model.l1_ratios, cmap=cmap, fig=fig, ax=ax, label="l1 ratio", fontsize=fontsize)
+        return fig, ax
+    else:
+        return ax
+
+def plot_elnet_perf(model, highlight_c="orange", cmap=cm.viridis, t=0, figsize=None, fontsize=None):
     fig, (ax1, ax2) = plt.subplots(1,2, figsize=figsize)
     fig.suptitle('Elastic Net Average Crossval Performance', fontsize=fontsize)
-    plot_perf_vs_l1ratio(model, highlight_c=highlight_c, t=t, fontsize=fontsize, ax=ax1)
-    plot_perf_vs_c(model, highlight_c=highlight_c, t=t, fontsize=fontsize, ax=ax2)
+    plot_perf_vs_l1ratio(model, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax1)
+    plot_perf_vs_c(model, highlight_c=highlight_c, cmap=cmap, t=t, fontsize=fontsize, ax=ax2)
+
+    plot_cbar(np.log10(model.Cs_), cmap=cmap, fig=fig, ax=ax1, label="log(C)", fontsize=fontsize)
+    plot_cbar(model.l1_ratios, cmap=cmap, fig=fig, ax=ax2, label="l1 ratio", fontsize=fontsize)
+
     return fig, (ax1, ax2)
