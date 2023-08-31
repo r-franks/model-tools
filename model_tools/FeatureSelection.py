@@ -1,35 +1,43 @@
 from tqdm import tqdm
+
 from sklearn.model_selection import KFold
+from sklearn.model_selection import cross_val_score
+
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-def split_and_score(model, X, y, idx_splits):
+def split_and_score(model, X, y, idx_splits, return_train=False):
     train_perfs = []
     val_perfs = []
     
     for train_idx, test_idx in idx_splits:
         model.fit(X[train_idx,:], y[train_idx])
-        train_perf = model.score(X[train_idx,:], y[train_idx])
-        val_perf = model.score(X[test_idx,:], y[test_idx])
         
-        train_perfs.append(train_perf)
+        if return_train:
+            train_perf = model.score(X[train_idx,:], y[train_idx])
+            train_perfs.append(train_perf)
+
+        val_perf = model.score(X[test_idx,:], y[test_idx])
         val_perfs.append(val_perf)
         
-    return np.array(train_perfs).T.reshape(1,-1), np.array(val_perfs).T.reshape(1,-1)
+    if return_train:
+        return np.array(train_perfs).T.reshape(1,-1), np.array(val_perfs).T.reshape(1,-1)
+    else:
+        return np.array(val_perfs).T.reshape(1,-1)
 
-def dropcol_iterate(model, X, y, n_splits=3, col_order=None, random_state=42):
+def dropcol_iterate(model, X, y, n_splits=3, col_order=None, scoring="accuracy", random_state=42, n_jobs=-1):
     X_orig = X.copy()
     X = X.copy()
 
     idx_splits = [s for s in KFold(n_splits=n_splits, shuffle=True, random_state=random_state).split(X)]
-    train_init, val_init = split_and_score(model, X, y, idx_splits)
+    if scoring == "sketchy":
+        perf_init = split_and_score(model, X, y, idx_splits)
+    else:
+        perf_init = cross_val_score(model, X, y, scoring=scoring, cv=idx_splits, n_jobs=n_jobs).reshape(1,-1)
+    perf_mean = np.mean(perf_init)
     
-    val_mean = np.mean(val_init)
-    
-    train_perfs = []
-    val_perfs = []
-    best_vals = []
+    perfs = []
     col_idxs = []
     drop_ind = []
     
@@ -41,53 +49,51 @@ def dropcol_iterate(model, X, y, n_splits=3, col_order=None, random_state=42):
         col_tmp = X[:,col_idx].copy()
         X[:,col_idx] = 0
         
-        # idx_splits = [s for s in KFold(n_splits=n_splits, shuffle=True, random_state=random_state+col_idx).split(X)]
-        train_perf, val_perf = split_and_score(model, X, y, idx_splits)
+        if scoring == "sketchy":
+            perf_new = split_and_score(model, X, y, idx_splits)
+        else:
+            perf_new = cross_val_score(model, X, y, scoring=scoring, cv=idx_splits, n_jobs=n_jobs).reshape(1,-1)
         
         col_idxs.append(col_idx)
-        train_perfs.append(train_perf)
-        val_perfs.append(val_perf)
+        perfs.append(perf_new)
         
-        val_mean_new = np.mean(val_perf)
+        perf_mean_new = np.mean(perf_new)
         
-        best_vals.append(val_mean)
-        
-        if val_mean > val_mean_new:
+        if perf_mean > perf_mean_new:
             X[:,col_idx] = col_tmp
             drop_ind.append(False)
         else:
-            val_mean = val_mean_new
+            perf_mean = perf_mean_new
             drop_ind.append(True)
 
     dropped_idx =np.array(col_idxs)[np.array(drop_ind)]
 
     X_drp = X_orig.copy()
     X_drp[:,dropped_idx] = 0
+    
+    if scoring == "sketchy":
+        perf_fnl = split_and_score(model, X, y, idx_splits)
+    else:
+        perf_fnl = cross_val_score(model, X_drp, y, scoring=scoring, cv=idx_splits, n_jobs=n_jobs).reshape(1,-1)
 
-    train_fnl, val_fnl = split_and_score(model, X_drp, y, idx_splits)
-
-    train_perfs = np.concatenate(train_perfs, axis=0)
-    val_perfs = np.concatenate(val_perfs, axis=0)
+    perfs = np.concatenate(perfs, axis=0)
     drop_inds = np.array(drop_ind)
     col_idxs = np.array(col_idxs)
     
     summary_df = pd.DataFrame(
         {"col_idx": col_idxs,
-         "train_mean": train_perfs.mean(axis=1),
-         "val_mean": val_perfs.mean(axis=1)
+         "perf_mean": perfs.mean(axis=1)
         })
-    summary_df["best_val_mean"] = summary_df["val_mean"].cummax()
+    summary_df["best_perf_mean"] = summary_df["perf_mean"].cummax()
     summary_df["is_dropped"] = drop_inds
     summary_df["n_features"] = summary_df.shape[0] - summary_df["is_dropped"].cumsum()
     
     fnl_col_idx = list(summary_df["col_idx"][summary_df["is_dropped"]==False])
 
-    return {"train_init": train_init,
-            "val_init": val_init,
-            "train_fnl": train_fnl,
-            "val_fnl": val_fnl,
-            "train_perfs": train_perfs,
-            "val_perfs": val_perfs,
+    return {"perf_metric": scoring,
+            "perf_init": perf_init,
+            "perf_fnl": perf_fnl,
+            "perfs": perfs,
             "drop_inds": drop_inds,
             "col_idxs": col_idxs,
             "summary": summary_df,
@@ -98,8 +104,8 @@ def plot_dropcol(summary, figsize=[6,4], fontsize=12):
     fig, ax = plt.subplots(1,1, figsize=figsize)
     ax.set_xlabel("Step")
     ax.set_ylabel("Mean Validation Accuracy", fontsize=fontsize)
-    ax.plot(summary["val_mean"], "o", color="blue")
-    ax.plot(summary["best_val_mean"], ".", color="orange")
+    ax.plot(summary["perf_mean"], "o", color="blue")
+    ax.plot(summary["best_perf_mean"], ".", color="orange")
 
     ax2 = ax.twinx()
     ax2.set_ylabel("Remaining Features", fontsize=fontsize)
@@ -107,8 +113,8 @@ def plot_dropcol(summary, figsize=[6,4], fontsize=12):
     ax2.axis('tight')
 
     # add legend to distinguish series
-    ax2.plot([], [], label="Best Val Perf")
-    ax2.plot([], [], label="Current Val Perf")
+    ax2.plot([], [], label="Current Perf")
+    ax2.plot([], [], label="Best Perf")
     ax2.plot([], [], label="Remaining Features")
     ax2.legend(loc="upper left")
     
